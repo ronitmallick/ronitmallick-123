@@ -1,0 +1,46 @@
+import streamlit as st
+import pandas as pd
+from utils import yahoo_data, zigzag, pattern_engine
+import time
+
+st.title("NSE Pattern Scanner (Free Web)")
+
+st.write("""
+Scan NSE stocks (excluding F&O) for professional swing pattern:
+- 32–50% downtrend
+- ≥2 spikes inside downtrend
+- 10% uptrend
+- 40% in 4 days breakout
+""")
+
+# Load stock list
+stock_list = pd.read_csv('stock_list.csv')['Symbol'].tolist()
+
+if st.button("Start Scan"):
+    all_matches = []
+    progress = st.progress(0)
+    for idx, symbol in enumerate(stock_list):
+        df = yahoo_data.fetch_stock_data(symbol)
+        if df is None:
+            continue
+        df = yahoo_data.fetch_volume_value(df)
+        # Volume filter (last 120 days)
+        last_120 = df.tail(120)
+        avg_vol = last_120['vol_value'].rolling(100).mean().iloc[-1]
+        if not (2e6 <= avg_vol <= 1e8):
+            continue
+        # Zigzag swings
+        swings = zigzag.zigzag(df)
+        # Detect pattern
+        matches = pattern_engine.detect_pattern(df, swings)
+        for m in matches:
+            m['Stock'] = symbol
+            all_matches.append(m)
+        progress.progress((idx+1)/len(stock_list))
+        time.sleep(0.3)  # Avoid blocking Yahoo API
+    if all_matches:
+        st.success("Scan complete!")
+        result_df = pd.DataFrame(all_matches)
+        st.dataframe(result_df)
+    else:
+        st.warning("No matches found today.")
